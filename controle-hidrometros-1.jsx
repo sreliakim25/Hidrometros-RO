@@ -7,8 +7,7 @@ import {
 } from "lucide-react";
 import { LOTS_DATA, QUADRAS, RUAS, BOULEVARDS, QUADRA_BORDERS, SVG_SIZE } from "./src/data/lotsData";
 import {
-  SUPA_ON, EDIT_EMAIL_DOMAIN, loadAll, saveUnidade, removeUnidade, savePin, removePin,
-  subscribe, signIn, signOut, getSession, onAuthChange, nameFromEmail,
+  SUPA_ON, loadAll, saveUnidade, removeUnidade, savePin, removePin, subscribe,
 } from "./src/lib/supabase";
 
 const PAGE_SIZE = 40; // rows rendered at once — key performance knob
@@ -220,9 +219,7 @@ export default function App() {
   const [view, setView]                 = useState("lista");
   const [selectedMapUnitId, setSelectedMapUnitId] = useState(null);
   // ── Controle de acesso (editor) ─────────────────────────────────────────────
-  // Offline: nome guardado na sessão. Supabase: derivado da sessão de auth real.
   const [editor, setEditor] = useState(() => {
-    if (SUPA_ON) return null;
     try { return sessionStorage.getItem(SESSION_KEY_EDIT) || null; } catch { return null; }
   });
   const canEdit = !!editor;
@@ -230,24 +227,11 @@ export default function App() {
 
   const enterEdit = useCallback((name) => {
     setEditor(name);
-    if (!SUPA_ON) { try { sessionStorage.setItem(SESSION_KEY_EDIT, name); } catch { /* ignore */ } }
+    try { sessionStorage.setItem(SESSION_KEY_EDIT, name); } catch { /* ignore */ }
   }, []);
   const exitEdit = useCallback(() => {
     setEditor(null);
-    if (SUPA_ON) { signOut().catch(() => {}); }
-    else { try { sessionStorage.removeItem(SESSION_KEY_EDIT); } catch { /* ignore */ } }
-  }, []);
-
-  // Sessão de auth do Supabase (restaura login ao recarregar; sincroniza logout)
-  useEffect(() => {
-    if (!SUPA_ON) return;
-    getSession().then(({ data }) => {
-      if (data?.session) setEditor(nameFromEmail(data.session.user.email));
-    });
-    const { data: sub } = onAuthChange((session) => {
-      setEditor(session ? nameFromEmail(session.user.email) : null);
-    });
-    return () => sub?.subscription?.unsubscribe?.();
+    try { sessionStorage.removeItem(SESSION_KEY_EDIT); } catch { /* ignore */ }
   }, []);
 
   // ── Carregar dados (Supabase quando ativo; senão localStorage) ──────────────
@@ -653,18 +637,8 @@ function LoginModal({ onClose, onSuccess }) {
   const [erro, setErro] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  const submit = async () => {
+  const submit = () => {
     if (busy) return;
-    if (SUPA_ON) {
-      // Login real: "nayara" → nayara@<domínio>. Também aceita e-mail completo.
-      const email = user.includes("@") ? user.trim() : `${user.trim().toLowerCase()}@${EDIT_EMAIL_DOMAIN}`;
-      setBusy(true);
-      const { data, error } = await signIn(email, pass);
-      setBusy(false);
-      if (error || !data?.session) { setErro(true); return; }
-      onSuccess(nameFromEmail(data.session.user.email));
-      return;
-    }
     const ed = findEditor(user, pass);
     if (ed) onSuccess(ed.name);
     else setErro(true);

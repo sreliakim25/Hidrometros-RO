@@ -42,11 +42,11 @@ create policy unidades_select_all on public.unidades for select using (true);
 drop policy if exists pins_select_all on public.pins;
 create policy pins_select_all on public.pins for select using (true);
 
--- Escrita (insert/update/delete) só para usuárias AUTENTICADAS (Nayara/Erika)
+-- Escrita liberada para anon + authenticated (autenticação via login no app, não via Supabase Auth)
 drop policy if exists unidades_write_auth on public.unidades;
-create policy unidades_write_auth on public.unidades for all to authenticated using (true) with check (true);
+create policy unidades_write_auth on public.unidades for all to anon, authenticated using (true) with check (true);
 drop policy if exists pins_write_auth on public.pins;
-create policy pins_write_auth on public.pins for all to authenticated using (true) with check (true);
+create policy pins_write_auth on public.pins for all to anon, authenticated using (true) with check (true);
 
 -- 3) REALTIME (sincroniza edições entre os aparelhos em tempo real) ----
 alter publication supabase_realtime add table public.unidades;
