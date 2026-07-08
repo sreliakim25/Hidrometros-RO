@@ -3,7 +3,7 @@ import {
   Search, Plus, Printer, Trash2, CheckCircle2, Clock, CircleDashed,
   Star, X, Loader2, List, Map as MapIcon, Ban, MapPin,
   BarChart3, ChevronRight, ChevronLeft, TrendingUp, CalendarDays, CalendarClock,
-  Lock, Unlock, LogOut, CloudUpload, CloudCheck,
+  Lock, Unlock, LogOut, Upload,
 } from "lucide-react";
 import { LOTS_DATA, QUADRAS, RUAS, BOULEVARDS, QUADRA_BORDERS, SVG_SIZE } from "./src/data/lotsData";
 import {
@@ -727,8 +727,8 @@ function TitleBlock({ counts, saving, showStats = true, canEdit, editorName, onE
               {syncStatus === "saving"
                 ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} />
                 : syncStatus === "ok"
-                  ? <CloudCheck size={13} />
-                  : <CloudUpload size={13} />}
+                  ? <CheckCircle2 size={13} />
+                  : <Upload size={13} />}
               {" "}{saveLabel}
             </button>
           )}
