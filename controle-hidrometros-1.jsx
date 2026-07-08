@@ -705,7 +705,7 @@ function TitleBlock({ counts, saving, showStats = true, canEdit, editorName, onE
   const saveLabel = syncStatus === "saving" ? "Salvando…" : syncStatus === "ok" ? "Salvo!" : syncStatus === "error" ? "Erro!" : "Salvar";
   const saveBg = syncStatus === "ok" ? "#2e7d32" : syncStatus === "error" ? "#c0392b" : "#1a73e8";
   return (
-    <div style={styles.hero}>
+    <div className="hero" style={styles.hero}>
       <div className="hero-top-row" style={styles.heroTopRow}>
         <div style={styles.heroBrand}>
           <div style={styles.heroMonogram}>
@@ -2086,6 +2086,8 @@ function GlobalStyle() {
       .chip:focus-visible { outline: 2px solid #DAD5C5; outline-offset: 1px; }
       @keyframes spin { to { transform: rotate(360deg); } }
       html, body { max-width: 100vw; overflow-x: hidden; }
+      /* Safe area: empurra o cabeçalho abaixo da barra de status do iPhone (Dynamic Island / notch) */
+      .hero { padding-top: max(18px, calc(env(safe-area-inset-top) + 8px)) !important; }
       @media (max-width: 480px) {
         /* Hero: empilha marca e botões em telas pequenas, alinhados à esquerda */
         .hero-top-row { flex-direction: column !important; align-items: flex-start !important; gap: 10px; }
