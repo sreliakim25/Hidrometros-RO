@@ -1,0 +1,17 @@
+{
+  "name": "Hidrômetros — Recanto das Oliveiras",
+  "short_name": "Hidrômetros",
+  "description": "Controle de substituição de hidrômetros",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#232323",
+  "theme_color": "#232323",
+  "icons": [
+    {
+      "src": "/hidrometro.png",
+      "sizes": "any",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

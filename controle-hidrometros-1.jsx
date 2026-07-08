@@ -459,7 +459,7 @@ export default function App() {
       />
 
       {/* View toggle */}
-      <div style={styles.viewSwitch}>
+      <div className="view-switch" style={styles.viewSwitch}>
         <button
           style={{ ...styles.viewBtn, ...(view === "lista" ? styles.viewBtnActive : {}) }}
           onClick={() => setView("lista")}
@@ -706,7 +706,7 @@ function TitleBlock({ counts, saving, showStats = true, canEdit, editorName, onE
   const saveBg = syncStatus === "ok" ? "#2e7d32" : syncStatus === "error" ? "#c0392b" : "#1a73e8";
   return (
     <div style={styles.hero}>
-      <div style={styles.heroTopRow}>
+      <div className="hero-top-row" style={styles.heroTopRow}>
         <div style={styles.heroBrand}>
           <div style={styles.heroMonogram}>
             <img src="/logo-vm.png" alt="Viana e Moura" style={styles.heroLogoImg} />
@@ -716,7 +716,7 @@ function TitleBlock({ counts, saving, showStats = true, canEdit, editorName, onE
             <span style={styles.heroBrandSub}>Construções</span>
           </div>
         </div>
-        <div style={styles.heroTopRight}>
+        <div className="hero-top-right" style={styles.heroTopRight}>
           {canEdit && SUPA_ON && (
             <button
               style={{ ...styles.editOnBtn, background: saveBg, borderColor: saveBg, marginRight: 4 }}
@@ -744,7 +744,7 @@ function TitleBlock({ counts, saving, showStats = true, canEdit, editorName, onE
           )}
         </div>
       </div>
-      <h1 style={styles.heroTitle}>Recanto das Oliveiras</h1>
+      <h1 className="hero-title" style={styles.heroTitle}>Recanto das Oliveiras</h1>
       <p style={{ ...styles.heroSubtitle, marginBottom: showStats ? 16 : 0 }}>
         Controle de substituição de hidrômetros · Gleba 06
       </p>
@@ -2084,6 +2084,20 @@ function GlobalStyle() {
       /* Chips de filtro: sem contorno escuro ao clicar; contorno claro só no teclado */
       .chip:focus { outline: none; }
       .chip:focus-visible { outline: 2px solid #DAD5C5; outline-offset: 1px; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      html, body { max-width: 100vw; overflow-x: hidden; }
+      @media (max-width: 480px) {
+        /* Hero: empilha marca e botões em telas pequenas */
+        .hero-top-row { flex-direction: column; align-items: flex-start; gap: 10px; }
+        .hero-top-right { width: 100%; justify-content: flex-start; flex-wrap: wrap; }
+        /* Título menor no celular */
+        .hero-title { font-size: 20px !important; }
+        /* Tabs de view: rolagem horizontal se não couberem */
+        .view-switch { overflow-x: auto; flex-wrap: nowrap; padding-bottom: 4px; }
+        .view-switch::-webkit-scrollbar { display: none; }
+        /* Filtros: uma coluna */
+        .filter-row { flex-direction: column; }
+      }
       @media print {
         .no-print { display: none !important; }
         body { background: white; }
