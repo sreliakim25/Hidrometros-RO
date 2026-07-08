@@ -2087,9 +2087,9 @@ function GlobalStyle() {
       @keyframes spin { to { transform: rotate(360deg); } }
       html, body { max-width: 100vw; overflow-x: hidden; }
       @media (max-width: 480px) {
-        /* Hero: empilha marca e botões em telas pequenas */
-        .hero-top-row { flex-direction: column; align-items: flex-start; gap: 10px; }
-        .hero-top-right { width: 100%; justify-content: flex-start; flex-wrap: wrap; }
+        /* Hero: empilha marca e botões em telas pequenas, alinhados à esquerda */
+        .hero-top-row { flex-direction: column !important; align-items: flex-start !important; gap: 10px; }
+        .hero-top-right { width: 100% !important; justify-content: flex-start !important; flex-wrap: wrap; }
         /* Título menor no celular */
         .hero-title { font-size: 20px !important; }
         /* Tabs de view: rolagem horizontal se não couberem */
