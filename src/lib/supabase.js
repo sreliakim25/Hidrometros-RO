@@ -81,11 +81,21 @@ export async function loadAll() {
   }
 }
 
-// ---- Escrita (só funciona autenticada, por causa do RLS) ----
+// ---- Escrita ----
 export async function saveUnidade(u) { return supabase.from('unidades').upsert(uToRow(u)) }
 export async function removeUnidade(id) { return supabase.from('unidades').delete().eq('id', id) }
 export async function savePin(p) { return supabase.from('pins').upsert(pToRow(p)) }
 export async function removePin(id) { return supabase.from('pins').delete().eq('id', id) }
+
+// Salva todos os dados de uma vez (upsert em lote)
+export async function saveAllData(units, pins) {
+  const r1 = await supabase.from('unidades').upsert(units.map(uToRow))
+  if (r1.error) throw r1.error
+  if (pins.length > 0) {
+    const r2 = await supabase.from('pins').upsert(pins.map(pToRow))
+    if (r2.error) throw r2.error
+  }
+}
 
 // ---- Realtime: avisa quando algo muda em qualquer aparelho ----
 export function subscribe(onChange) {

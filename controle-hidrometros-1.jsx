@@ -3,11 +3,11 @@ import {
   Search, Plus, Printer, Trash2, CheckCircle2, Clock, CircleDashed,
   Star, X, Loader2, List, Map as MapIcon, Ban, MapPin,
   BarChart3, ChevronRight, ChevronLeft, TrendingUp, CalendarDays, CalendarClock,
-  Lock, Unlock, LogOut,
+  Lock, Unlock, LogOut, CloudUpload, CloudCheck,
 } from "lucide-react";
 import { LOTS_DATA, QUADRAS, RUAS, BOULEVARDS, QUADRA_BORDERS, SVG_SIZE } from "./src/data/lotsData";
 import {
-  SUPA_ON, loadAll, saveUnidade, removeUnidade, savePin, removePin, subscribe,
+  SUPA_ON, loadAll, saveUnidade, removeUnidade, savePin, removePin, subscribe, saveAllData,
 } from "./src/lib/supabase";
 
 const PAGE_SIZE = 40; // rows rendered at once — key performance knob
@@ -224,6 +224,7 @@ export default function App() {
   });
   const canEdit = !!editor;
   const [showLogin, setShowLogin] = useState(false);
+  const [syncStatus, setSyncStatus] = useState("idle"); // "idle" | "saving" | "ok" | "error"
 
   const enterEdit = useCallback((name) => {
     setEditor(name);
@@ -233,6 +234,20 @@ export default function App() {
     setEditor(null);
     try { sessionStorage.removeItem(SESSION_KEY_EDIT); } catch { /* ignore */ }
   }, []);
+
+  const handleSaveAll = useCallback(async () => {
+    if (!SUPA_ON || syncStatus === "saving") return;
+    setSyncStatus("saving");
+    try {
+      await saveAllData(units || [], pins || []);
+      setSyncStatus("ok");
+      setTimeout(() => setSyncStatus("idle"), 2500);
+    } catch (e) {
+      console.error("[Supabase] saveAll:", e);
+      setSyncStatus("error");
+      setTimeout(() => setSyncStatus("idle"), 3000);
+    }
+  }, [units, pins, syncStatus]);
 
   // ── Carregar dados (Supabase quando ativo; senão localStorage) ──────────────
   useEffect(() => {
@@ -439,6 +454,8 @@ export default function App() {
         editorName={editor}
         onEnterEdit={() => setShowLogin(true)}
         onExitEdit={exitEdit}
+        syncStatus={syncStatus}
+        onSaveAll={handleSaveAll}
       />
 
       {/* View toggle */}
@@ -681,10 +698,12 @@ function LoginModal({ onClose, onSuccess }) {
 }
 
 // ---------------------------------------------------------------------------
-function TitleBlock({ counts, saving, showStats = true, canEdit, editorName, onEnterEdit, onExitEdit }) {
+function TitleBlock({ counts, saving, showStats = true, canEdit, editorName, onEnterEdit, onExitEdit, syncStatus = "idle", onSaveAll }) {
   // Percentual considerando apenas lotes que serão trocados (exclui dispensados)
   const pct = pctStr(counts.concluido, counts.base);
   const pctNum = counts.base > 0 ? (counts.concluido / counts.base) * 100 : 0;
+  const saveLabel = syncStatus === "saving" ? "Salvando…" : syncStatus === "ok" ? "Salvo!" : syncStatus === "error" ? "Erro!" : "Salvar";
+  const saveBg = syncStatus === "ok" ? "#2e7d32" : syncStatus === "error" ? "#c0392b" : "#1a73e8";
   return (
     <div style={styles.hero}>
       <div style={styles.heroTopRow}>
@@ -698,7 +717,21 @@ function TitleBlock({ counts, saving, showStats = true, canEdit, editorName, onE
           </div>
         </div>
         <div style={styles.heroTopRight}>
-          {canEdit && <span style={styles.heroSyncTag}>{saving ? "salvando…" : "sincronizado"}</span>}
+          {canEdit && SUPA_ON && (
+            <button
+              style={{ ...styles.editOnBtn, background: saveBg, borderColor: saveBg, marginRight: 4 }}
+              onClick={onSaveAll}
+              disabled={syncStatus === "saving"}
+              title="Salvar todas as alterações no servidor"
+            >
+              {syncStatus === "saving"
+                ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} />
+                : syncStatus === "ok"
+                  ? <CloudCheck size={13} />
+                  : <CloudUpload size={13} />}
+              {" "}{saveLabel}
+            </button>
+          )}
           {canEdit ? (
             <button style={styles.editOnBtn} onClick={onExitEdit} title="Sair do modo edição (voltar a somente leitura)">
               <Unlock size={13} /> {editorName ? `Edição · ${editorName}` : "Edição ativa"}
