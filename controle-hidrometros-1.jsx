@@ -164,7 +164,7 @@ function sortUnits(a, b) {
 
 function buildSeed() {
   return LOTS_DATA.map(lot => ({
-    id:           uid(),
+    id:           lot.svgId,
     svgId:        lot.svgId,
     numero:       lot.numero,
     quadra:       lot.quadra,
