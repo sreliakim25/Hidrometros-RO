@@ -32,9 +32,21 @@ create table if not exists public.pins (
   updated_at     timestamptz not null default now()
 );
 
+-- Log de auditoria: quem editou o quê e quando (registro imutável) ----
+create table if not exists public.logs (
+  id         text primary key,
+  editor     text        not null default 'sistema',
+  acao       text        not null,          -- login | adicionar | editar | remover
+  alvo       text,                          -- ex.: "Lote 12 · QA"
+  detalhe    text,                          -- ex.: "Status → Concluído"
+  criado_em  timestamptz not null default now()
+);
+create index if not exists logs_criado_em_idx on public.logs (criado_em desc);
+
 -- 2) SEGURANÇA (Row Level Security) -----------------------------------
 alter table public.unidades enable row level security;
 alter table public.pins     enable row level security;
+alter table public.logs     enable row level security;
 
 -- Leitura liberada para todos (visitantes com a publishable key)
 drop policy if exists unidades_select_all on public.unidades;
@@ -48,9 +60,17 @@ create policy unidades_write_auth on public.unidades for all to anon, authentica
 drop policy if exists pins_write_auth on public.pins;
 create policy pins_write_auth on public.pins for all to anon, authenticated using (true) with check (true);
 
+-- Logs: qualquer aparelho pode ler e inserir; ninguém pode alterar/apagar
+-- (não criamos policy de update/delete → o histórico é imutável).
+drop policy if exists logs_select_all on public.logs;
+create policy logs_select_all on public.logs for select using (true);
+drop policy if exists logs_insert_auth on public.logs;
+create policy logs_insert_auth on public.logs for insert to anon, authenticated with check (true);
+
 -- 3) REALTIME (sincroniza edições entre os aparelhos em tempo real) ----
 alter publication supabase_realtime add table public.unidades;
 alter publication supabase_realtime add table public.pins;
+alter publication supabase_realtime add table public.logs;
 
 -- 4) SEED — os 505 lotes do cadastro (id = svg_id) --------------------
 insert into public.unidades (id, svg_id, numero, quadra, rua, via_tipo, status, prioridade) values

@@ -3,11 +3,12 @@ import {
   Search, Plus, Printer, Trash2, CheckCircle2, Clock, CircleDashed,
   Star, X, Loader2, List, Map as MapIcon, Ban, MapPin,
   BarChart3, ChevronRight, ChevronLeft, TrendingUp, CalendarDays, CalendarClock,
-  Lock, Unlock, LogOut, Upload,
+  Lock, Unlock, LogOut, Upload, Shield, ScrollText, Activity, User,
 } from "lucide-react";
 import { LOTS_DATA, QUADRAS, RUAS, BOULEVARDS, QUADRA_BORDERS, SVG_SIZE } from "./src/data/lotsData";
 import {
   SUPA_ON, loadAll, saveUnidade, removeUnidade, savePin, removePin, subscribe, saveAllData,
+  saveLog, loadLogs,
 } from "./src/lib/supabase";
 
 const PAGE_SIZE = 40; // rows rendered at once — key performance knob
@@ -40,18 +41,42 @@ const STATUS_FILL = {
 
 const STORAGE_KEY      = "hidrometro-unidades-v3";
 const STORAGE_KEY_PINS = "hidrometro-pins-v1";
+const STORAGE_KEY_LOGS = "hidrometro-logs-v1";
 const SESSION_KEY_EDIT = "hidrometro-edit-ativo";
+const SESSION_KEY_ROLE = "hidrometro-edit-role";
 
-// Usuárias autorizadas a editar (Nayara e Erika). As senhas vêm de variável de
-// ambiente (chaves privadas): VITE_PASS_NAYARA e VITE_PASS_ERIKA.
-// Os valores abaixo são apenas fallback de desenvolvimento — troque em produção.
+// Usuárias autorizadas a editar (Nayara e Erika) + o Admin (auditoria).
+// As senhas vêm de variável de ambiente (chaves privadas):
+//   VITE_PASS_NAYARA · VITE_PASS_ERIKA · VITE_PASS_ADMIN
+// Os valores abaixo são apenas fallback de desenvolvimento — troque em produção
+// (defina no .env.local em desenvolvimento e nas Environment Variables do Vercel em produção).
+// role: "editor" = edita os hidrômetros | "admin" = edita + acessa o módulo de Logs.
 const EDITORS = [
-  { user: "nayara", name: "Nayara", pass: import.meta.env?.VITE_PASS_NAYARA || "nayara2026" },
-  { user: "erika",  name: "Erika",  pass: import.meta.env?.VITE_PASS_ERIKA  || "erika2026"  },
+  { user: "nayara", name: "Nayara", pass: import.meta.env?.VITE_PASS_NAYARA || "nayara2026", role: "editor" },
+  { user: "erika",  name: "Erika",  pass: import.meta.env?.VITE_PASS_ERIKA  || "erika2026",  role: "editor" },
+  { user: "admin",  name: "Admin",  pass: import.meta.env?.VITE_PASS_ADMIN  || "admin2026",  role: "admin"  },
 ];
 function findEditor(user, pass) {
   const u = String(user).trim().toLowerCase();
   return EDITORS.find(e => e.user === u && e.pass === pass) || null;
+}
+
+// Rótulos legíveis dos campos, para descrever o que mudou em cada edição no log.
+const FIELD_LABELS = {
+  status: "Status", dataAgendada: "Data agendada", dataConcluida: "Data concluída",
+  obs: "Observação", prioridade: "Prioridade", numero: "Número", quadra: "Quadra",
+  rua: "Rua", label: "Rótulo", area: "Área", x: "Posição", y: "Posição",
+};
+// Converte um "patch" (campos alterados) em texto para o log de auditoria.
+function describePatch(patch) {
+  const parts = Object.entries(patch || {}).map(([k, v]) => {
+    const label = FIELD_LABELS[k] || k;
+    if (k === "status") return `${label} → ${STATUS[v]?.label || v}`;
+    if (k === "prioridade") return `${label} → ${v ? "sim" : "não"}`;
+    if (v === "" || v == null) return `${label} limpado(a)`;
+    return `${label} → ${v}`;
+  });
+  return parts.join("; ") || "sem alterações";
 }
 
 // Contexto de permissão: true = pode editar; false = somente leitura
@@ -218,22 +243,65 @@ export default function App() {
   const [saving, setSaving]             = useState(false);
   const [view, setView]                 = useState("lista");
   const [selectedMapUnitId, setSelectedMapUnitId] = useState(null);
-  // ── Controle de acesso (editor) ─────────────────────────────────────────────
+  // ── Controle de acesso (editor / admin) ─────────────────────────────────────
   const [editor, setEditor] = useState(() => {
     try { return sessionStorage.getItem(SESSION_KEY_EDIT) || null; } catch { return null; }
   });
+  const [editorRole, setEditorRole] = useState(() => {
+    try { return sessionStorage.getItem(SESSION_KEY_ROLE) || null; } catch { return null; }
+  });
   const canEdit = !!editor;
+  const isAdmin = editorRole === "admin";
   const [showLogin, setShowLogin] = useState(false);
   const [syncStatus, setSyncStatus] = useState("idle"); // "idle" | "saving" | "ok" | "error"
 
-  const enterEdit = useCallback((name) => {
+  // ── Logs de auditoria (quem editou o quê e quando) ──────────────────────────
+  const [logs, setLogs] = useState([]);
+  // Ref sempre com o nome atual — os handlers de edição (memoizados) leem daqui.
+  const editorRef = useRef(editor);
+  useEffect(() => { editorRef.current = editor; }, [editor]);
+
+  const logAction = useCallback((acao, alvo, detalhe) => {
+    const entry = {
+      id: `log_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      editor: editorRef.current || "sistema",
+      acao,
+      alvo: alvo || "",
+      detalhe: detalhe || "",
+      criadoEm: new Date().toISOString(),
+    };
+    setLogs(prev => [entry, ...prev].slice(0, 2000));
+    if (SUPA_ON) {
+      saveLog(entry).then(r => r?.error && console.warn("[Supabase] log:", r.error.message));
+    } else {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY_LOGS);
+        const arr = raw ? JSON.parse(raw) : [];
+        arr.unshift(entry);
+        localStorage.setItem(STORAGE_KEY_LOGS, JSON.stringify(arr.slice(0, 2000)));
+      } catch { /* ignore */ }
+    }
+  }, []);
+
+  const enterEdit = useCallback((name, role = "editor") => {
     setEditor(name);
-    try { sessionStorage.setItem(SESSION_KEY_EDIT, name); } catch { /* ignore */ }
-  }, []);
+    setEditorRole(role);
+    try {
+      sessionStorage.setItem(SESSION_KEY_EDIT, name);
+      sessionStorage.setItem(SESSION_KEY_ROLE, role);
+    } catch { /* ignore */ }
+    editorRef.current = name;
+    logAction("login", null, `${name} entrou no modo edição${role === "admin" ? " (admin)" : ""}`);
+  }, [logAction]);
   const exitEdit = useCallback(() => {
+    logAction("logout", null, `${editorRef.current || "Editor"} saiu do modo edição`);
     setEditor(null);
-    try { sessionStorage.removeItem(SESSION_KEY_EDIT); } catch { /* ignore */ }
-  }, []);
+    setEditorRole(null);
+    try {
+      sessionStorage.removeItem(SESSION_KEY_EDIT);
+      sessionStorage.removeItem(SESSION_KEY_ROLE);
+    } catch { /* ignore */ }
+  }, [logAction]);
 
   const handleSaveAll = useCallback(async () => {
     if (!SUPA_ON || syncStatus === "saving") return;
@@ -258,8 +326,10 @@ export default function App() {
           const { units: U, pins: P } = await loadAll();
           setUnits(U.length ? U : buildSeed());
           setPins(P);
+          try { setLogs(await loadLogs()); } catch { /* logs indisponíveis */ }
           cleanup = subscribe(async (tbl) => {
             try {
+              if (tbl === "logs") { setLogs(await loadLogs()); return; }
               const fresh = await loadAll();
               if (tbl === "unidades") setUnits(fresh.units.length ? fresh.units : buildSeed());
               else setPins(fresh.pins);
@@ -277,6 +347,10 @@ export default function App() {
       try {
         const rawP = localStorage.getItem(STORAGE_KEY_PINS);
         if (rawP) setPins(JSON.parse(rawP));
+      } catch { /* ignore */ }
+      try {
+        const rawL = localStorage.getItem(STORAGE_KEY_LOGS);
+        if (rawL) setLogs(JSON.parse(rawL));
       } catch { /* ignore */ }
     })();
     return () => cleanup?.();
@@ -301,13 +375,14 @@ export default function App() {
   const updateUnit = useCallback((id, patch) => {
     setUnits(prev => {
       const next = prev.map(u => u.id === id ? { ...u, ...patch } : u);
-      if (SUPA_ON) {
-        const u = next.find(x => x.id === id);
-        if (u) saveUnidade(u).then(r => r?.error && console.warn("[Supabase] update:", r.error.message));
+      const u = next.find(x => x.id === id);
+      if (u) {
+        if (SUPA_ON) saveUnidade(u).then(r => r?.error && console.warn("[Supabase] update:", r.error.message));
+        logAction("editar", `Lote ${u.numero || "?"} · Q${u.quadra || "?"}`, describePatch(patch));
       }
       return next;
     });
-  }, []);
+  }, [logAction]);
 
   const addUnit = useCallback((lot) => {
     setUnits(prev => {
@@ -319,35 +394,51 @@ export default function App() {
         dataAgendada: "", dataConcluida: "", obs: "",
       };
       if (SUPA_ON) saveUnidade(novo).then(r => r?.error && console.warn("[Supabase] add:", r.error.message));
+      logAction("adicionar", `Lote ${novo.numero || "?"} · Q${novo.quadra || "?"}`, "Nova troca adicionada");
       return [...prev, novo];
     });
-  }, []);
+  }, [logAction]);
 
   const deleteUnit = useCallback((id) => {
-    setUnits(prev => prev.filter(u => u.id !== id));
+    setUnits(prev => {
+      const u = prev.find(x => x.id === id);
+      if (u) logAction("remover", `Lote ${u.numero || "?"} · Q${u.quadra || "?"}`, "Troca removida");
+      return prev.filter(x => x.id !== id);
+    });
     if (SUPA_ON) removeUnidade(id).then(r => r?.error && console.warn("[Supabase] delete:", r.error.message));
-  }, []);
+  }, [logAction]);
 
   // ── Pins ──────────────────────────────────────────────────────────────────
   const addPin = useCallback((pin) => {
     const novo = { id: `p_${Date.now()}_${Math.random().toString(36).slice(2,6)}`, ...pin };
     setPins(prev => [...prev, novo]);
     if (SUPA_ON) savePin(novo).then(r => r?.error && console.warn("[Supabase] pin add:", r.error.message));
-  }, []);
+    logAction("adicionar", `Pin ${novo.label || "sem rótulo"}`, "Novo pin no mapa");
+  }, [logAction]);
   const updatePin = useCallback((id, patch) => {
     setPins(prev => {
       const next = prev.map(p => p.id === id ? { ...p, ...patch } : p);
-      if (SUPA_ON) {
-        const p = next.find(x => x.id === id);
-        if (p) savePin(p).then(r => r?.error && console.warn("[Supabase] pin update:", r.error.message));
+      const p = next.find(x => x.id === id);
+      if (p) {
+        if (SUPA_ON) savePin(p).then(r => r?.error && console.warn("[Supabase] pin update:", r.error.message));
+        logAction("editar", `Pin ${p.label || "sem rótulo"}`, describePatch(patch));
       }
       return next;
     });
-  }, []);
+  }, [logAction]);
   const deletePin = useCallback((id) => {
-    setPins(prev => prev.filter(p => p.id !== id));
+    setPins(prev => {
+      const p = prev.find(x => x.id === id);
+      if (p) logAction("remover", `Pin ${p.label || "sem rótulo"}`, "Pin removido");
+      return prev.filter(x => x.id !== id);
+    });
     if (SUPA_ON) removePin(id).then(r => r?.error && console.warn("[Supabase] pin delete:", r.error.message));
-  }, []);
+  }, [logAction]);
+
+  // Se o admin sair (ou perder o papel), não deixa a view de Logs aberta
+  useEffect(() => {
+    if (!isAdmin && view === "logs") setView("lista");
+  }, [isAdmin, view]);
 
   // Ao trocar de quadra, se a via atual não existe nela, volta via para "todas" (e vice-versa)
   const selectQuadra = useCallback((q) => {
@@ -484,9 +575,20 @@ export default function App() {
         >
           <CalendarDays size={14} /> Calendário
         </button>
+        {isAdmin && (
+          <button
+            style={{ ...styles.viewBtn, ...(view === "logs" ? styles.viewBtnActive : {}) }}
+            onClick={() => setView("logs")}
+            title="Auditoria — acesso exclusivo do admin"
+          >
+            <Shield size={14} /> Logs
+          </button>
+        )}
       </div>
 
-      {view === "dashboard" ? (
+      {view === "logs" && isAdmin ? (
+        <AdminLogs logs={logs} />
+      ) : view === "dashboard" ? (
         <Dashboard units={units} counts={counts} />
       ) : view === "calendario" ? (
         <Calendar units={units} />
@@ -639,7 +741,7 @@ export default function App() {
       {showLogin && (
         <LoginModal
           onClose={() => setShowLogin(false)}
-          onSuccess={(name) => { enterEdit(name); setShowLogin(false); }}
+          onSuccess={(ed) => { enterEdit(ed.name, ed.role); setShowLogin(false); }}
         />
       )}
     </div>
@@ -657,7 +759,7 @@ function LoginModal({ onClose, onSuccess }) {
   const submit = () => {
     if (busy) return;
     const ed = findEditor(user, pass);
-    if (ed) onSuccess(ed.name);
+    if (ed) onSuccess(ed);
     else setErro(true);
   };
 
@@ -672,7 +774,7 @@ function LoginModal({ onClose, onSuccess }) {
         value={user}
         autoFocus
         autoCapitalize="none"
-        placeholder="nayara ou erika"
+        placeholder="nayara, erika ou admin"
         onChange={e => { setUser(e.target.value); setErro(false); }}
         onKeyDown={e => e.key === "Enter" && submit()}
       />
@@ -2109,6 +2211,188 @@ function GlobalStyle() {
 }
 
 // ---------------------------------------------------------------------------
+// Módulo de AUDITORIA — exclusivo do admin. Painel de indicadores + tabela de logs.
+const ACAO_META = {
+  login:     { label: "Login",     color: BRAND.steel,      bg: BRAND.steelBg },
+  logout:    { label: "Logout",    color: BRAND.inkSoft,    bg: "#EDEBE3" },
+  adicionar: { label: "Adicionar", color: BRAND.olive,      bg: BRAND.oliveBg },
+  editar:    { label: "Editar",    color: BRAND.amber,      bg: BRAND.amberBg },
+  remover:   { label: "Remover",   color: BRAND.terracotta, bg: BRAND.terracottaBg },
+};
+
+function fmtLogDate(iso) {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "—";
+  return d.toLocaleString("pt-BR", {
+    day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
+  });
+}
+
+function AcaoBadge({ acao }) {
+  const m = ACAO_META[acao] || { label: acao || "—", color: BRAND.inkSoft, bg: "#EDEBE3" };
+  return (
+    <span style={{ ...styles.logBadge, color: m.color, background: m.bg }}>{m.label}</span>
+  );
+}
+
+function AdminLogs({ logs }) {
+  const [fEditor, setFEditor] = useState("todos");
+  const [fAcao, setFAcao]     = useState("todas");
+  const [q, setQ]            = useState("");
+  const [shown, setShown]    = useState(120);
+
+  const editores = useMemo(
+    () => Array.from(new Set(logs.map(l => l.editor).filter(Boolean))).sort(),
+    [logs]
+  );
+
+  const filtered = useMemo(() => {
+    const qq = q.trim().toLowerCase();
+    return logs.filter(l =>
+      (fEditor === "todos" || l.editor === fEditor) &&
+      (fAcao === "todas" || l.acao === fAcao) &&
+      (!qq || `${l.alvo} ${l.detalhe} ${l.editor}`.toLowerCase().includes(qq))
+    );
+  }, [logs, fEditor, fAcao, q]);
+
+  // Indicadores do painel-resumo
+  const hojeStr = new Date().toDateString();
+  const hoje    = logs.filter(l => new Date(l.criadoEm).toDateString() === hojeStr).length;
+  const edicoes = logs.filter(l => l.acao === "editar").length;
+  const ultima  = logs[0]?.criadoEm ? fmtLogDate(logs[0].criadoEm) : "—";
+
+  const porEditor = useMemo(() => {
+    const m = {};
+    logs.forEach(l => { if (l.editor && l.editor !== "sistema") m[l.editor] = (m[l.editor] || 0) + 1; });
+    return Object.entries(m).sort((a, b) => b[1] - a[1]);
+  }, [logs]);
+  const porAcao = useMemo(() => {
+    const m = {};
+    logs.forEach(l => { m[l.acao] = (m[l.acao] || 0) + 1; });
+    return Object.entries(m).sort((a, b) => b[1] - a[1]);
+  }, [logs]);
+
+  const maxEditor = porEditor[0]?.[1] || 1;
+
+  return (
+    <div style={styles.dashWrap}>
+      {/* Cabeçalho do módulo */}
+      <div style={styles.logsHeader}>
+        <Shield size={18} color={BRAND.olive} />
+        <div>
+          <div style={styles.logsTitle}>Logs de auditoria</div>
+          <div style={styles.logsSubtitle}>Registro de quem editou o quê, quando e em que horário · acesso exclusivo do admin</div>
+        </div>
+      </div>
+
+      {/* Painel-resumo — indicadores */}
+      <div style={styles.dashKpiGrid}>
+        <DashKpi label="Registros"      value={logs.length} color="#6B6862" />
+        <DashKpi label="Hoje"           value={hoje}        color={BRAND.olive} />
+        <DashKpi label="Edições"        value={edicoes}     color={BRAND.amber} />
+        <DashKpi label="Usuários"       value={porEditor.length} color={BRAND.steel} />
+      </div>
+      <div style={styles.logsLastRow}>
+        <Clock size={13} color="#9A9488" /> Última atividade: <strong style={{ color: "#232323" }}>{ultima}</strong>
+      </div>
+
+      {/* Distribuição por editor e por ação */}
+      <div style={styles.logsSplit}>
+        <div style={styles.dashCard}>
+          <span style={styles.dashCardTitle}><User size={15} /> Atividade por usuário</span>
+          <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+            {porEditor.length === 0 && <span style={styles.logsEmpty}>Sem registros ainda.</span>}
+            {porEditor.map(([nome, n]) => (
+              <div key={nome} style={styles.logBarRow}>
+                <span style={styles.logBarName}>{nome}</span>
+                <div style={styles.logBarTrack}>
+                  <div style={{ ...styles.logBarFill, width: `${(n / maxEditor) * 100}%` }} />
+                </div>
+                <span style={styles.logBarVal}>{n}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div style={styles.dashCard}>
+          <span style={styles.dashCardTitle}><Activity size={15} /> Ações registradas</span>
+          <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+            {porAcao.length === 0 && <span style={styles.logsEmpty}>Sem registros ainda.</span>}
+            {porAcao.map(([acao, n]) => (
+              <div key={acao} style={styles.logAcaoRow}>
+                <AcaoBadge acao={acao} />
+                <span style={styles.logBarVal}>{n}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Filtros */}
+      <div style={styles.logsFilters}>
+        <div style={styles.searchBox}>
+          <Search size={16} color="#6B6862" />
+          <input
+            style={styles.searchInput}
+            placeholder="buscar por lote, detalhe ou usuário..."
+            value={q}
+            onChange={e => { setQ(e.target.value); setShown(120); }}
+          />
+        </div>
+        <select style={styles.logsSelect} value={fEditor} onChange={e => { setFEditor(e.target.value); setShown(120); }}>
+          <option value="todos">Todos os usuários</option>
+          {editores.map(e => <option key={e} value={e}>{e}</option>)}
+        </select>
+        <select style={styles.logsSelect} value={fAcao} onChange={e => { setFAcao(e.target.value); setShown(120); }}>
+          <option value="todas">Todas as ações</option>
+          {Object.keys(ACAO_META).map(a => <option key={a} value={a}>{ACAO_META[a].label}</option>)}
+        </select>
+      </div>
+
+      {/* Tabela de logs */}
+      <div style={styles.dashCard}>
+        <div style={styles.dashCardHead}>
+          <span style={styles.dashCardTitle}><ScrollText size={15} /> Registros</span>
+          <span style={styles.logsCount}>{filtered.length} registro(s)</span>
+        </div>
+        <div style={styles.logsTableWrap}>
+          <table style={styles.logsTable}>
+            <thead>
+              <tr>
+                <th style={styles.logsTh}>Data / Hora</th>
+                <th style={styles.logsTh}>Usuário</th>
+                <th style={styles.logsTh}>Ação</th>
+                <th style={styles.logsTh}>Alvo</th>
+                <th style={styles.logsTh}>Detalhe</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.length === 0 && (
+                <tr><td colSpan={5} style={styles.logsTdEmpty}>Nenhum registro encontrado.</td></tr>
+              )}
+              {filtered.slice(0, shown).map(l => (
+                <tr key={l.id} style={styles.logsTr}>
+                  <td style={{ ...styles.logsTd, whiteSpace: "nowrap", color: "#6B6862" }}>{fmtLogDate(l.criadoEm)}</td>
+                  <td style={{ ...styles.logsTd, fontWeight: 600 }}>{l.editor}</td>
+                  <td style={styles.logsTd}><AcaoBadge acao={l.acao} /></td>
+                  <td style={styles.logsTd}>{l.alvo || "—"}</td>
+                  <td style={{ ...styles.logsTd, color: "#6B6862" }}>{l.detalhe || "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {shown < filtered.length && (
+          <button style={styles.loadMoreBtn} onClick={() => setShown(v => v + 120)}>
+            Carregar mais {Math.min(120, filtered.length - shown)}
+            <span style={styles.loadMoreCount}> ({shown} de {filtered.length})</span>
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 const styles = {
   page:         { minHeight: "100vh", background: "#F7F6F1", fontFamily: "'Inter', sans-serif", paddingBottom: 40 },
   loadingScreen:{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "#F7F6F1" },
@@ -2262,6 +2546,34 @@ const styles = {
   compTitle:    { fontSize: 10.5, fontWeight: 700, color: "#9A9488", textTransform: "uppercase", letterSpacing: 0.5 },
   compValue:    { fontFamily: "'Poppins', sans-serif", fontSize: 26, fontWeight: 800, color: "#5C6B33", lineHeight: 1 },
   compCaption:  { fontSize: 11, color: "#6B6862" },
+
+  // ── Módulo de Logs (auditoria) ──
+  logsHeader:   { display: "flex", alignItems: "center", gap: 10, background: "#FFFFFF", border: "1px solid #E7E3D6", borderRadius: 12, padding: "12px 14px" },
+  logsTitle:    { fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 15, color: "#232323" },
+  logsSubtitle: { fontSize: 11.5, color: "#6B6862", marginTop: 2 },
+  logsLastRow:  { display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#6B6862", padding: "0 2px" },
+  logsSplit:    { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12 },
+  logsEmpty:    { fontSize: 12, color: "#9A9488", fontStyle: "italic" },
+
+  logBarRow:    { display: "flex", alignItems: "center", gap: 8 },
+  logBarName:   { fontSize: 12, fontWeight: 600, color: "#232323", width: 72, flexShrink: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  logBarTrack:  { flex: 1, height: 8, background: "#F0EFE7", borderRadius: 5, overflow: "hidden" },
+  logBarFill:   { height: "100%", background: "#5C6B33", borderRadius: 5 },
+  logBarVal:    { fontFamily: "'Poppins', sans-serif", fontSize: 12.5, fontWeight: 700, color: "#232323", width: 34, textAlign: "right", flexShrink: 0 },
+  logAcaoRow:   { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 },
+
+  logBadge:     { display: "inline-block", fontSize: 10.5, fontWeight: 700, padding: "2px 8px", borderRadius: 999, letterSpacing: 0.2 },
+
+  logsFilters:  { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" },
+  logsSelect:   { fontFamily: "'Inter', sans-serif", fontSize: 12.5, padding: "8px 10px", borderRadius: 8, border: "1px solid #E7E3D6", background: "#FFFFFF", color: "#232323", cursor: "pointer" },
+  logsCount:    { fontSize: 11.5, fontWeight: 600, color: "#9A9488" },
+
+  logsTableWrap:{ overflowX: "auto", marginTop: 10, WebkitOverflowScrolling: "touch" },
+  logsTable:    { width: "100%", borderCollapse: "collapse", minWidth: 560 },
+  logsTh:       { textAlign: "left", fontSize: 10.5, fontWeight: 700, color: "#9A9488", textTransform: "uppercase", letterSpacing: 0.5, padding: "6px 10px", borderBottom: "1px solid #E7E3D6", whiteSpace: "nowrap" },
+  logsTr:       { borderBottom: "1px solid #F0EDE4" },
+  logsTd:       { fontSize: 12.5, color: "#232323", padding: "8px 10px", verticalAlign: "top" },
+  logsTdEmpty:  { fontSize: 12.5, color: "#9A9488", fontStyle: "italic", padding: "16px 10px", textAlign: "center" },
 
   estGrid:      { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 10, marginTop: 12 },
   estItem:      { display: "flex", flexDirection: "column", gap: 3 },

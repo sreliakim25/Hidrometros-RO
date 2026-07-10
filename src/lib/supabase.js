@@ -97,12 +97,42 @@ export async function saveAllData(units, pins) {
   }
 }
 
+// ---- Logs de auditoria (quem editou o quê e quando) ----
+// Registro imutável: só inserção e leitura (a tabela não tem policy de update/delete).
+const logToRow = (l) => ({
+  id: l.id,
+  editor: l.editor || 'sistema',
+  acao: l.acao || '',
+  alvo: l.alvo || null,
+  detalhe: l.detalhe || null,
+  criado_em: l.criadoEm || new Date().toISOString(),
+})
+const rowToLog = (r) => ({
+  id: r.id,
+  editor: r.editor || 'sistema',
+  acao: r.acao || '',
+  alvo: r.alvo || '',
+  detalhe: r.detalhe || '',
+  criadoEm: r.criado_em || '',
+})
+export async function saveLog(l) { return supabase.from('logs').insert(logToRow(l)) }
+export async function loadLogs(limit = 2000) {
+  const { data, error } = await supabase
+    .from('logs')
+    .select('*')
+    .order('criado_em', { ascending: false })
+    .limit(limit)
+  if (error) throw error
+  return (data || []).map(rowToLog)
+}
+
 // ---- Realtime: avisa quando algo muda em qualquer aparelho ----
 export function subscribe(onChange) {
   const ch = supabase
     .channel('rt-hidrometros')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'unidades' }, () => onChange('unidades'))
     .on('postgres_changes', { event: '*', schema: 'public', table: 'pins' }, () => onChange('pins'))
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'logs' }, () => onChange('logs'))
     .subscribe()
   return () => { try { supabase.removeChannel(ch) } catch { /* ignore */ } }
 }
