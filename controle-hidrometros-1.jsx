@@ -774,7 +774,7 @@ function LoginModal({ onClose, onSuccess }) {
         value={user}
         autoFocus
         autoCapitalize="none"
-        placeholder="nayara, erika ou admin"
+        placeholder="nayara ou erika"
         onChange={e => { setUser(e.target.value); setErro(false); }}
         onKeyDown={e => e.key === "Enter" && submit()}
       />
@@ -2471,13 +2471,13 @@ const styles = {
   mapResetBtn:  { fontSize: 11.5, fontWeight: 600, padding: "5px 10px", borderRadius: 6, border: "1px solid #DAD5C5", background: "#FFFFFF", color: "#6B6862", cursor: "pointer" },
   mapViewport:  { position: "relative", margin: "0 16px", height: "calc(100vh - 320px)", minHeight: 400, overflow: "hidden", borderRadius: 8, border: "1px solid #E7E3D6", background: "#F0EFE7", touchAction: "none" },
 
-  modalBackdrop:{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 100 },
-  modalBackdropTop:{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "flex-start", justifyContent: "center", zIndex: 100, paddingTop: "8vh" },
+  modalBackdrop:{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 100, padding: "12px max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left))" },
+  modalBackdropTop:{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "flex-start", justifyContent: "center", zIndex: 100, padding: "8vh max(12px, env(safe-area-inset-right)) 12px max(12px, env(safe-area-inset-left))" },
   lotDetailCard:{ background: "#FFFFFF", borderRadius: 12, width: "100%", maxWidth: 440, maxHeight: "82vh", overflowY: "auto", boxShadow: "0 12px 40px rgba(0,0,0,0.35)" },
   lotStatusBadge:{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 700, padding: "6px 12px", borderRadius: 20, borderWidth: 1, borderStyle: "solid", marginBottom: 10 },
   readOnlyNote: { display: "flex", alignItems: "center", gap: 5, fontSize: 11.5, fontWeight: 600, color: "#6B6862", background: "#F0EFE7", borderRadius: 6, padding: "5px 10px", margin: "0 0 10px" },
-  modalCard:    { background: "#FFFFFF", borderRadius: "12px 12px 0 0", width: "100%", maxWidth: 440, maxHeight: "88vh", overflowY: "auto" },
-  pinDetailCard:{ background: "#FFFFFF", borderRadius: "12px 12px 0 0", width: "100%", maxWidth: 440, maxHeight: "80vh", overflowY: "auto" },
+  modalCard:    { background: "#FFFFFF", borderRadius: 14, width: "100%", maxWidth: 440, maxHeight: "calc(100dvh - 24px)", overflowY: "auto", boxShadow: "0 12px 40px rgba(0,0,0,0.35)" },
+  pinDetailCard:{ background: "#FFFFFF", borderRadius: 14, width: "100%", maxWidth: 440, maxHeight: "calc(100dvh - 24px)", overflowY: "auto", boxShadow: "0 12px 40px rgba(0,0,0,0.35)" },
   modalHeader:  { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px 10px", borderBottom: "1px solid #E7E3D6" },
   modalTitle:   { fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 14, color: "#232323" },
   modalSubtitle:{ fontFamily: "'Inter', sans-serif", fontWeight: 500, fontSize: 12, color: "#6B6862" },
